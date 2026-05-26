@@ -139,7 +139,7 @@ function updateNavbar() {
       ${navHref('/profile.html', esc(user.realName || user.username))}
       <a href="#" onclick="logout()" class="btn btn-outline btn-sm">退出</a>
     `;
-    if (user.role !== 'admin') loadNotifBadge();
+    loadNotifBadge();
   } else {
     navLinks.innerHTML = `
       ${navHref('/search.html', '搜索航班')}

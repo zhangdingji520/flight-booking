@@ -144,8 +144,9 @@
         showToast('订票成功！');
         setTimeout(() => window.location.href = '/orders.html', 1000);
       } catch (e) {
-        setBtnLoading(btn, false);
         showToast(e.message, 'error');
+      } finally {
+        setBtnLoading(btn, false);
       }
     }
 

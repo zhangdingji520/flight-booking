@@ -90,6 +90,7 @@
         email: document.getElementById('email').value.trim(),
         phone: document.getElementById('phone').value.trim()
       };
+      if (!body.realName) return showToast('姓名不能为空', 'error');
       setBtnLoading(btn, true);
       try {
         const res = await API.updateProfile(body);

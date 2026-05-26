@@ -1,7 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { authMiddleware } = require('../middleware/auth');
-const { createNotification } = require('../services/notify');
 const db = require('../db');
 
 const router = express.Router();
@@ -71,8 +70,8 @@ router.put('/:id/refund-request', authMiddleware, (req, res) => {
   const orders = db.read('orders.json');
   const order = orders.find(o => o.id === req.params.id && o.userId === req.user.id);
   if (!order) return res.status(404).json({ message: '订单不存在' });
+  if (order.status === 'refund_pending') return res.status(400).json({ message: '您已提交过退款申请，请耐心等待审核' });
   if (order.status !== 'paid') return res.status(400).json({ message: '只有已支付的订单可以申请退款' });
-  if (order.status === 'refund_pending') return res.status(400).json({ message: '已提交退款申请' });
   order.status = 'refund_pending';
   order.refundReason = reason.trim();
   order.refundRequestedAt = new Date().toISOString();

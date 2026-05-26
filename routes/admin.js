@@ -63,6 +63,22 @@ router.put('/flights/:id', adminAuth, validateFlight, (req, res) => {
     notifyUsersByFlight(old.id, 'delay', '航班延误通知', `您预订的航班 ${old.flightNo}（${old.departure}→${old.arrival}）已延误，请关注最新动态。`);
   }
 
+  // If status changed to cancelled, auto-cancel related orders and release seats
+  let autoCancelledCount = 0;
+  if (newStatus === 'cancelled' && old.status !== 'cancelled') {
+    const orders = db.read('orders.json');
+    const affected = orders.filter(o => o.flightId === old.id && (o.status === 'paid' || o.status === 'refund_pending'));
+    for (const order of affected) {
+      order.status = 'cancelled';
+      createNotification(order.userId, 'flight_cancel', '航班取消通知',
+        `您预订的航班 ${old.flightNo}（${old.departure}→${old.arrival}）已被取消，订单 ${order.id} 已自动取消并释放座位。`);
+    }
+    if (affected.length > 0) {
+      db.write('orders.json', orders);
+      autoCancelledCount = affected.length;
+    }
+  }
+
   Object.assign(flights[idx], {
     flightNo: sanitize(flightNo.trim()), airline: sanitize(airline.trim()),
     departure: sanitize(departure.trim()), arrival: sanitize(arrival.trim()),
@@ -71,7 +87,10 @@ router.put('/flights/:id', adminAuth, validateFlight, (req, res) => {
     availableSeats: Math.max(0, totalSeats - soldSeats)
   });
   db.write('flights.json', flights);
-  res.json({ message: '更新成功', flight: flights[idx] });
+  const msg = autoCancelledCount > 0
+    ? `更新成功，已自动取消 ${autoCancelledCount} 个关联订单`
+    : '更新成功';
+  res.json({ message: msg, flight: flights[idx] });
 });
 
 router.delete('/flights/:id', adminAuth, (req, res) => {
@@ -92,7 +111,14 @@ router.delete('/flights/:id', adminAuth, (req, res) => {
 
   const remaining = flights.filter(f => f.id !== req.params.id);
   db.write('flights.json', remaining);
-  res.json({ message: `删除成功，已自动取消 ${affected.length} 个相关订单` });
+  res.json({ message: `删除成功，已自动取消 ${affected.length} 个相关订单`, cancelledOrders: affected.length });
+});
+
+// Get affected order count for a flight (used by frontend confirm dialog)
+router.get('/flights/:id/orders-count', adminAuth, (req, res) => {
+  const orders = db.read('orders.json');
+  const count = orders.filter(o => o.flightId === req.params.id && (o.status === 'paid' || o.status === 'refund_pending')).length;
+  res.json({ count });
 });
 
 // === User management ===
