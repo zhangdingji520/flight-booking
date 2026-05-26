@@ -13,7 +13,9 @@
   </nav>
 
   <div class="container">
-    <div class="card" id="flight-detail">加载中...</div>
+    <div class="card" id="flight-detail">
+      <div class="loading-container"><div class="spinner"></div><span>加载中...</span></div>
+    </div>
 
     <div class="card">
       <h3 style="margin-bottom:16px">乘客信息</h3>
@@ -27,7 +29,19 @@
         <span id="total-price" style="font-size:24px;font-weight:700;color:var(--danger)"></span>
         <span style="color:var(--gray-500);margin-left:8px" id="price-detail"></span>
       </div>
-      <button class="btn btn-primary" onclick="doBook()">确认订票</button>
+      <button class="btn btn-primary" id="book-btn" onclick="confirmBook()">确认订票</button>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal">
+      <h3>确认订票</h3>
+      <div id="confirm-body"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeConfirm()">取消</button>
+        <button class="btn btn-primary" id="submit-btn" onclick="doBook()">确认支付</button>
+      </div>
     </div>
   </div>
 
@@ -48,12 +62,13 @@
             <span>${esc(flight.departure)}</span>
             <span class="arrow">→</span>
             <span>${esc(flight.arrival)}</span>
+            <span class="flight-duration">${esc(fmtDuration(flight.departureTime, flight.arrivalTime))}</span>
           </div>
           <div class="flight-meta" style="margin-top:8px">
             <span>出发: ${esc(flight.departureTime)}</span>
             <span>到达: ${esc(flight.arrivalTime)}</span>
             <span>机型: ${esc(flight.aircraft)}</span>
-            <span>余票: ${flight.availableSeats}</span>
+            <span class="${seatClass(flight.availableSeats, flight.totalSeats)}">余票: ${flight.availableSeats}</span>
           </div>
           <div style="margin-top:12px;font-size:20px;font-weight:700;color:var(--danger)">${fmtPrice(flight.price)}/人</div>
         `;
@@ -86,22 +101,57 @@
       document.getElementById('price-detail').textContent = `${count} × ${fmtPrice(flight.price)}`;
     }
 
-    async function doBook() {
+    function getPassengers() {
       const passengers = [];
       document.querySelectorAll('.passenger-item').forEach(item => {
         const name = item.querySelector('.pax-name').value.trim();
         const idCard = item.querySelector('.pax-id').value.trim();
         if (name) passengers.push({ name, idCard });
       });
+      return passengers;
+    }
+
+    function confirmBook() {
+      const passengers = getPassengers();
       if (!passengers.length) return showToast('请至少填写一位乘客', 'error');
+      const count = passengers.length;
+      document.getElementById('confirm-body').innerHTML = `
+        <div class="order-detail">
+          <div class="detail-row"><span>航班</span><span>${esc(flight.airline)} ${esc(flight.flightNo)}</span></div>
+          <div class="detail-row"><span>航线</span><span>${esc(flight.departure)} → ${esc(flight.arrival)}</span></div>
+          <div class="detail-row"><span>时间</span><span>${esc(flight.departureTime)}</span></div>
+          <div class="detail-row"><span>飞行时长</span><span>${esc(fmtDuration(flight.departureTime, flight.arrivalTime))}</span></div>
+          <div class="detail-row"><span>单价</span><span>${fmtPrice(flight.price)}</span></div>
+          <div class="detail-row"><span>乘客数</span><span>${count}人</span></div>
+          <div class="detail-row"><span>乘客</span><span>${passengers.map(p => esc(p.name)).join(', ')}</span></div>
+          <div class="detail-row" style="font-weight:700"><span>总价</span><span style="color:var(--danger);font-size:18px">${fmtPrice(flight.price * count)}</span></div>
+        </div>
+      `;
+      document.getElementById('confirm-modal').classList.add('active');
+    }
+
+    function closeConfirm() {
+      document.getElementById('confirm-modal').classList.remove('active');
+    }
+
+    async function doBook() {
+      const btn = document.getElementById('submit-btn');
+      const passengers = getPassengers();
+      setBtnLoading(btn, true);
       try {
         const res = await API.createOrder({ flightId: flight.id, passengers });
+        closeConfirm();
         showToast('订票成功！');
         setTimeout(() => window.location.href = '/orders.html', 1000);
       } catch (e) {
+        setBtnLoading(btn, false);
         showToast(e.message, 'error');
       }
     }
+
+    document.getElementById('confirm-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeConfirm();
+    });
 
     loadFlight();
   </script>

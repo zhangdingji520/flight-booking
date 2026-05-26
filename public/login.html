@@ -23,7 +23,7 @@
         <label>密码</label>
         <input type="password" id="password" placeholder="请输入密码">
       </div>
-      <button class="btn btn-primary btn-block" onclick="doLogin()">登录</button>
+      <button class="btn btn-primary btn-block" id="login-btn" onclick="doLogin()">登录</button>
       <div class="alt-link">
         还没有账号？<a href="/register.html">立即注册</a>
       </div>
@@ -35,23 +35,30 @@
 
   <script src="/js/api.js"></script>
   <script>
-    if (getUser()) window.location.href = '/';
+    if (getUser()) {
+      const redirect = new URLSearchParams(location.search).get('redirect') || '/';
+      window.location.href = redirect;
+    }
 
     document.getElementById('password').addEventListener('keydown', e => {
       if (e.key === 'Enter') doLogin();
     });
 
     async function doLogin() {
+      const btn = document.getElementById('login-btn');
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
       if (!username || !password) return showToast('请填写完整', 'error');
+      setBtnLoading(btn, true);
       try {
         const res = await API.login({ username, password });
         localStorage.setItem('token', res.token);
         localStorage.setItem('user', JSON.stringify(res.user));
         showToast('登录成功');
-        setTimeout(() => window.location.href = '/', 800);
+        const redirect = new URLSearchParams(location.search).get('redirect') || '/';
+        setTimeout(() => window.location.href = redirect, 800);
       } catch (e) {
+        setBtnLoading(btn, false);
         showToast(e.message, 'error');
       }
     }

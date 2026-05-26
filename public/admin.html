@@ -14,7 +14,7 @@
 
   <div class="container">
     <h2 style="margin-bottom:20px">管理后台</h2>
-    <div class="stats-grid" id="stats">加载中...</div>
+    <div class="stats-grid" id="stats"><div class="loading-container"><div class="spinner"></div><span>加载中...</span></div></div>
 
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('flights', this)">航班管理</button>
@@ -24,16 +24,19 @@
 
     <!-- Flights tab -->
     <div class="tab-content active" id="tab-flights">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="admin-search">
         <h3>航班列表</h3>
-        <button class="btn btn-primary btn-sm" onclick="showFlightModal()">+ 添加航班</button>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="flight-search" placeholder="搜索航班号/城市..." oninput="filterFlights()">
+          <button class="btn btn-primary btn-sm" onclick="showFlightModal()">+ 添加航班</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>航班号</th><th>航空公司</th><th>出发</th><th>到达</th>
-              <th>出发时间</th><th>到达时间</th><th>价格</th><th>余票</th><th>状态</th><th>操作</th>
+              <th>出发时间</th><th>到达时间</th><th>飞行时长</th><th>价格</th><th>余票</th><th>状态</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="flights-body"></tbody>
@@ -43,7 +46,10 @@
 
     <!-- Users tab -->
     <div class="tab-content" id="tab-users">
-      <h3 style="margin-bottom:16px">用户列表</h3>
+      <div class="admin-search">
+        <h3>用户列表</h3>
+        <input type="text" id="user-search" placeholder="搜索用户名/姓名..." oninput="filterUsers()">
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -56,7 +62,10 @@
 
     <!-- Orders tab -->
     <div class="tab-content" id="tab-orders">
-      <h3 style="margin-bottom:16px">订单列表</h3>
+      <div class="admin-search">
+        <h3>订单列表</h3>
+        <input type="text" id="order-search" placeholder="搜索订单号/用户/航班..." oninput="filterOrders()">
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -68,7 +77,7 @@
     </div>
   </div>
 
-  <!-- Flight add/edit modal -->
+  <!-- Flight modal -->
   <div class="modal-overlay" id="flight-modal">
     <div class="modal">
       <h3 id="flight-modal-title">添加航班</h3>
@@ -93,7 +102,19 @@
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeFlightModal()">取消</button>
-        <button class="btn btn-primary" onclick="saveFlight()">保存</button>
+        <button class="btn btn-primary" id="save-flight-btn" onclick="saveFlight()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status confirm modal -->
+  <div class="modal-overlay" id="status-modal">
+    <div class="modal">
+      <h3>确认修改订单状态</h3>
+      <p id="status-confirm-text" style="margin-bottom:16px"></p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeStatusModal()">取消</button>
+        <button class="btn btn-primary" id="confirm-status-btn" onclick="doUpdateStatus()">确认修改</button>
       </div>
     </div>
   </div>
@@ -105,6 +126,9 @@
       showToast('需要管理员权限', 'error');
       setTimeout(() => window.location.href = '/', 1000);
     }
+
+    let allFlights = [], allUsers = [], allOrders = [];
+    let pendingStatusUpdate = null;
 
     async function loadStats() {
       try {
@@ -125,32 +149,48 @@
       document.getElementById(`tab-${name}`).classList.add('active');
     }
 
-    // Flights
+    // === Flights ===
     async function loadFlights() {
       try {
-        const flights = await API.getAdminFlights();
-        const statusMap = { 'on-time': ['准点', 'badge-success'], delayed: ['延误', 'badge-warning'], cancelled: ['取消', 'badge-danger'] };
-        document.getElementById('flights-body').innerHTML = flights.map(f => {
-          const [st, cls] = statusMap[f.status] || [esc(f.status), 'badge-info'];
-          return `
-            <tr>
-              <td><strong>${esc(f.flightNo)}</strong></td>
-              <td>${esc(f.airline)}</td>
-              <td>${esc(f.departure)}</td>
-              <td>${esc(f.arrival)}</td>
-              <td>${esc(f.departureTime.replace('T', ' '))}</td>
-              <td>${esc(f.arrivalTime.replace('T', ' '))}</td>
-              <td style="color:var(--danger);font-weight:600">${fmtPrice(f.price)}</td>
-              <td>${f.availableSeats}/${f.totalSeats}</td>
-              <td><span class="badge ${cls}">${st}</span></td>
-              <td>
-                <button class="btn btn-outline btn-sm" onclick="editFlight('${esc(f.id)}')">编辑</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteFlight('${esc(f.id)}')">删除</button>
-              </td>
-            </tr>
-          `;
-        }).join('');
+        allFlights = await API.getAdminFlights();
+        renderFlights(allFlights);
       } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    function renderFlights(flights) {
+      const statusMap = { 'on-time': ['准点', 'badge-success'], delayed: ['延误', 'badge-warning'], cancelled: ['取消', 'badge-danger'] };
+      document.getElementById('flights-body').innerHTML = flights.map(f => {
+        const [st, cls] = statusMap[f.status] || [esc(f.status), 'badge-info'];
+        const duration = fmtDuration(f.departureTime, f.arrivalTime);
+        return `
+          <tr>
+            <td><strong>${esc(f.flightNo)}</strong></td>
+            <td>${esc(f.airline)}</td>
+            <td>${esc(f.departure)}</td>
+            <td>${esc(f.arrival)}</td>
+            <td>${esc(f.departureTime.replace('T', ' '))}</td>
+            <td>${esc(f.arrivalTime.replace('T', ' '))}</td>
+            <td><span class="flight-duration">${esc(duration)}</span></td>
+            <td style="color:var(--danger);font-weight:600">${fmtPrice(f.price)}</td>
+            <td><span class="${seatClass(f.availableSeats, f.totalSeats)}">${f.availableSeats}/${f.totalSeats}</span></td>
+            <td><span class="badge ${cls}">${st}</span></td>
+            <td>
+              <button class="btn btn-outline btn-sm" onclick="editFlight('${esc(f.id)}')">编辑</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteFlight('${esc(f.id)}')">删除</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function filterFlights() {
+      const q = document.getElementById('flight-search').value.trim().toLowerCase();
+      if (!q) return renderFlights(allFlights);
+      renderFlights(allFlights.filter(f =>
+        f.flightNo.toLowerCase().includes(q) ||
+        f.departure.includes(q) || f.arrival.includes(q) ||
+        f.airline.includes(q)
+      ));
     }
 
     function showFlightModal(flight) {
@@ -175,16 +215,14 @@
     }
 
     async function editFlight(id) {
-      try {
-        const flights = await API.getAdminFlights();
-        const flight = flights.find(f => f.id === id);
-        if (flight) showFlightModal(flight);
-      } catch (e) { showToast(e.message, 'error'); }
+      const flight = allFlights.find(f => f.id === id);
+      if (flight) showFlightModal(flight);
     }
 
     function closeFlightModal() { document.getElementById('flight-modal').classList.remove('active'); }
 
     async function saveFlight() {
+      const btn = document.getElementById('save-flight-btn');
       const id = document.getElementById('f-edit-id').value;
       const body = {
         flightNo: document.getElementById('f-flightNo').value.trim(),
@@ -198,17 +236,16 @@
         aircraft: document.getElementById('f-aircraft').value.trim(),
         status: document.getElementById('f-status').value
       };
+      setBtnLoading(btn, true);
       try {
-        if (id) {
-          await API.updateFlight(id, body);
-        } else {
-          await API.addFlight(body);
-        }
+        if (id) await API.updateFlight(id, body);
+        else await API.addFlight(body);
         showToast('保存成功');
         closeFlightModal();
         loadFlights();
         loadStats();
       } catch (e) { showToast(e.message, 'error'); }
+      finally { setBtnLoading(btn, false); }
     }
 
     async function deleteFlight(id) {
@@ -221,22 +258,35 @@
       } catch (e) { showToast(e.message, 'error'); }
     }
 
-    // Users
+    // === Users ===
     async function loadUsers() {
       try {
-        const users = await API.getAdminUsers();
-        document.getElementById('users-body').innerHTML = users.map(u => `
-          <tr>
-            <td><strong>${esc(u.username)}</strong></td>
-            <td>${esc(u.realName)}</td>
-            <td>${esc(u.email || '-')}</td>
-            <td>${esc(u.phone || '-')}</td>
-            <td><span class="badge ${u.role === 'admin' ? 'badge-info' : 'badge-success'}">${u.role === 'admin' ? '管理员' : '用户'}</span></td>
-            <td>${new Date(u.createdAt).toLocaleDateString()}</td>
-            <td>${u.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')">删除</button>` : '-'}</td>
-          </tr>
-        `).join('');
+        allUsers = await API.getAdminUsers();
+        renderUsers(allUsers);
       } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    function renderUsers(users) {
+      document.getElementById('users-body').innerHTML = users.map(u => `
+        <tr>
+          <td><strong>${esc(u.username)}</strong></td>
+          <td>${esc(u.realName)}</td>
+          <td>${esc(u.email || '-')}</td>
+          <td>${esc(u.phone || '-')}</td>
+          <td><span class="badge ${u.role === 'admin' ? 'badge-info' : 'badge-success'}">${u.role === 'admin' ? '管理员' : '用户'}</span></td>
+          <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+          <td>${u.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')">删除</button>` : '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function filterUsers() {
+      const q = document.getElementById('user-search').value.trim().toLowerCase();
+      if (!q) return renderUsers(allUsers);
+      renderUsers(allUsers.filter(u =>
+        u.username.toLowerCase().includes(q) ||
+        (u.realName && u.realName.toLowerCase().includes(q))
+      ));
     }
 
     async function deleteUser(id) {
@@ -249,44 +299,88 @@
       } catch (e) { showToast(e.message, 'error'); }
     }
 
-    // Orders
+    // === Orders ===
     async function loadOrders() {
       try {
-        const orders = await API.getAdminOrders();
-        const statusMap = { paid: ['已支付', 'badge-success'], cancelled: ['已取消', 'badge-danger'], completed: ['已完成', 'badge-info'], refunded: ['已退款', 'badge-warning'] };
-        document.getElementById('orders-body').innerHTML = orders.map(o => {
-          const [st, cls] = statusMap[o.status] || [esc(o.status), 'badge-info'];
-          return `
-            <tr>
-              <td><strong>${esc(o.id)}</strong></td>
-              <td>${esc(o.username)}</td>
-              <td>${esc(o.flightNo)}</td>
-              <td>${esc(o.departure)} → ${esc(o.arrival)}</td>
-              <td>${o.passengers.map(p => esc(p.name)).join(', ')}</td>
-              <td style="color:var(--danger);font-weight:600">${fmtPrice(o.totalPrice)}</td>
-              <td><span class="badge ${cls}">${st}</span></td>
-              <td>${new Date(o.createdAt).toLocaleString()}</td>
-              <td>
-                <select onchange="updateOrderStatus('${esc(o.id)}', this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--gray-300)">
-                  <option value="paid" ${o.status === 'paid' ? 'selected' : ''}>已支付</option>
-                  <option value="completed" ${o.status === 'completed' ? 'selected' : ''}>已完成</option>
-                  <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>已取消</option>
-                  <option value="refunded" ${o.status === 'refunded' ? 'selected' : ''}>已退款</option>
-                </select>
-              </td>
-            </tr>
-          `;
-        }).join('');
+        allOrders = await API.getAdminOrders();
+        renderOrders(allOrders);
       } catch (e) { showToast(e.message, 'error'); }
     }
 
-    async function updateOrderStatus(id, status) {
-      try {
-        await API.updateOrderStatus(id, status);
-        showToast('状态已更新');
-        loadStats();
-      } catch (e) { showToast(e.message, 'error'); }
+    function renderOrders(orders) {
+      const statusMap = { paid: ['已支付', 'badge-success'], cancelled: ['已取消', 'badge-danger'], completed: ['已完成', 'badge-info'], refunded: ['已退款', 'badge-warning'] };
+      document.getElementById('orders-body').innerHTML = orders.map(o => {
+        const [st, cls] = statusMap[o.status] || [esc(o.status), 'badge-info'];
+        return `
+          <tr>
+            <td><strong>${esc(o.id)}</strong></td>
+            <td>${esc(o.username)}</td>
+            <td>${esc(o.flightNo)}</td>
+            <td>${esc(o.departure)} → ${esc(o.arrival)}</td>
+            <td>${o.passengers.map(p => esc(p.name)).join(', ')}</td>
+            <td style="color:var(--danger);font-weight:600">${fmtPrice(o.totalPrice)}</td>
+            <td><span class="badge ${cls}">${st}</span></td>
+            <td>${new Date(o.createdAt).toLocaleString()}</td>
+            <td>
+              <select onchange="confirmStatusChange('${esc(o.id)}', '${esc(o.status)}', this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--gray-300)">
+                <option value="paid" ${o.status === 'paid' ? 'selected' : ''}>已支付</option>
+                <option value="completed" ${o.status === 'completed' ? 'selected' : ''}>已完成</option>
+                <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>已取消</option>
+                <option value="refunded" ${o.status === 'refunded' ? 'selected' : ''}>已退款</option>
+              </select>
+            </td>
+          </tr>
+        `;
+      }).join('');
     }
+
+    function filterOrders() {
+      const q = document.getElementById('order-search').value.trim().toLowerCase();
+      if (!q) return renderOrders(allOrders);
+      renderOrders(allOrders.filter(o =>
+        o.id.toLowerCase().includes(q) ||
+        o.username.toLowerCase().includes(q) ||
+        o.flightNo.toLowerCase().includes(q) ||
+        o.departure.includes(q) || o.arrival.includes(q)
+      ));
+    }
+
+    function confirmStatusChange(orderId, oldStatus, newStatus) {
+      if (oldStatus === newStatus) return;
+      const statusLabels = { paid: '已支付', completed: '已完成', cancelled: '已取消', refunded: '已退款' };
+      document.getElementById('status-confirm-text').textContent =
+        `确定将订单状态从「${statusLabels[oldStatus]}」修改为「${statusLabels[newStatus]}」吗？`;
+      pendingStatusUpdate = { orderId, newStatus };
+      document.getElementById('status-modal').classList.add('active');
+    }
+
+    function closeStatusModal() {
+      document.getElementById('status-modal').classList.remove('active');
+      pendingStatusUpdate = null;
+      loadOrders();
+    }
+
+    async function doUpdateStatus() {
+      if (!pendingStatusUpdate) return;
+      const btn = document.getElementById('confirm-status-btn');
+      setBtnLoading(btn, true);
+      try {
+        await API.updateOrderStatus(pendingStatusUpdate.orderId, pendingStatusUpdate.newStatus);
+        showToast('状态已更新');
+        document.getElementById('status-modal').classList.remove('active');
+        pendingStatusUpdate = null;
+        loadStats();
+        loadOrders();
+      } catch (e) {
+        showToast(e.message, 'error');
+      } finally {
+        setBtnLoading(btn, false);
+      }
+    }
+
+    document.getElementById('status-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeStatusModal();
+    });
 
     loadStats();
     loadFlights();
