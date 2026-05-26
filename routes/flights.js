@@ -28,14 +28,12 @@ router.get('/search', (req, res) => {
 
 // Get all flights
 router.get('/', (req, res) => {
-  const flights = readFlights();
-  res.json(flights);
+  res.json(readFlights());
 });
 
 // Get single flight
 router.get('/:id', (req, res) => {
-  const flights = readFlights();
-  const flight = flights.find(f => f.id === req.params.id);
+  const flight = readFlights().find(f => f.id === req.params.id);
   if (!flight) return res.status(404).json({ message: '航班不存在' });
   res.json(flight);
 });

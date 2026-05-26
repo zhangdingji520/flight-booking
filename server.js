@@ -1,7 +1,7 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { PORT } = require('./config');
 
 const authRoutes = require('./routes/auth');
 const flightRoutes = require('./routes/flights');
@@ -9,10 +9,26 @@ const orderRoutes = require('./routes/orders');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.use(cors());
 app.use(express.json());
+
+// Block cross-origin API requests
+app.use('/api', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    const host = req.headers.host;
+    try {
+      const originHost = new URL(origin).host;
+      if (originHost !== host) {
+        return res.status(403).json({ message: '跨域请求被拒绝' });
+      }
+    } catch {
+      return res.status(403).json({ message: '跨域请求被拒绝' });
+    }
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ensure data directory exists
@@ -29,8 +45,7 @@ const dataFiles = {
 for (const [file, defaultData] of Object.entries(dataFiles)) {
   const filePath = path.join(dataDir, file);
   if (!fs.existsSync(filePath)) {
-    const content = file === 'flights.json' ? defaultData : defaultData;
-    fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
+    fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
   }
 }
 

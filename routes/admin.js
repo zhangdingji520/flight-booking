@@ -1,12 +1,10 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const { adminAuth } = require('../middleware/auth');
+const { validateFlight, validateOrderStatus } = require('../middleware/validate');
 
 const router = express.Router();
-const JWT_SECRET = 'flight-booking-secret-key-2026';
 const dataDir = path.join(__dirname, '..', 'data');
 
 function readJSON(name) {
@@ -14,19 +12,6 @@ function readJSON(name) {
 }
 function writeJSON(name, data) {
   fs.writeFileSync(path.join(dataDir, name), JSON.stringify(data, null, 2));
-}
-
-function adminAuth(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ message: '请先登录' });
-  try {
-    const decoded = jwt.verify(auth.replace('Bearer ', ''), JWT_SECRET);
-    if (decoded.role !== 'admin') return res.status(403).json({ message: '需要管理员权限' });
-    req.user = decoded;
-    next();
-  } catch {
-    res.status(401).json({ message: 'token 无效' });
-  }
 }
 
 // === Dashboard stats ===
@@ -49,24 +34,45 @@ router.get('/flights', adminAuth, (req, res) => {
   res.json(readJSON('flights.json'));
 });
 
-router.post('/flights', adminAuth, (req, res) => {
+router.post('/flights', adminAuth, validateFlight, (req, res) => {
   const flights = readJSON('flights.json');
+  const { flightNo, airline, departure, arrival, departureTime, arrivalTime, price, totalSeats, aircraft, status } = req.body;
   const flight = {
     id: 'F' + (1000 + flights.length + 1),
-    ...req.body,
-    availableSeats: req.body.totalSeats || 180,
-    status: 'on-time'
+    flightNo: flightNo.trim(),
+    airline: airline.trim(),
+    departure: departure.trim(),
+    arrival: arrival.trim(),
+    departureTime,
+    arrivalTime,
+    price,
+    totalSeats,
+    aircraft: aircraft.trim(),
+    availableSeats: totalSeats,
+    status: status || 'on-time'
   };
   flights.push(flight);
   writeJSON('flights.json', flights);
   res.json({ message: '添加成功', flight });
 });
 
-router.put('/flights/:id', adminAuth, (req, res) => {
+router.put('/flights/:id', adminAuth, validateFlight, (req, res) => {
   const flights = readJSON('flights.json');
   const idx = flights.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: '航班不存在' });
-  Object.assign(flights[idx], req.body);
+  const { flightNo, airline, departure, arrival, departureTime, arrivalTime, price, totalSeats, aircraft, status } = req.body;
+  Object.assign(flights[idx], {
+    flightNo: flightNo.trim(),
+    airline: airline.trim(),
+    departure: departure.trim(),
+    arrival: arrival.trim(),
+    departureTime,
+    arrivalTime,
+    price,
+    totalSeats,
+    aircraft: aircraft.trim(),
+    status: status || flights[idx].status
+  });
   writeJSON('flights.json', flights);
   res.json({ message: '更新成功', flight: flights[idx] });
 });
@@ -80,10 +86,9 @@ router.delete('/flights/:id', adminAuth, (req, res) => {
 
 // === User management ===
 router.get('/users', adminAuth, (req, res) => {
-  const users = readJSON('users.json').map(u => ({
+  res.json(readJSON('users.json').map(u => ({
     id: u.id, username: u.username, realName: u.realName, email: u.email, phone: u.phone, role: u.role, createdAt: u.createdAt
-  }));
-  res.json(users);
+  })));
 });
 
 router.put('/users/:id', adminAuth, (req, res) => {
@@ -94,7 +99,7 @@ router.put('/users/:id', adminAuth, (req, res) => {
   if (realName !== undefined) user.realName = realName;
   if (email !== undefined) user.email = email;
   if (phone !== undefined) user.phone = phone;
-  if (role !== undefined) user.role = role;
+  if (role !== undefined && ['user', 'admin'].includes(role)) user.role = role;
   writeJSON('users.json', users);
   res.json({ message: '更新成功' });
 });
@@ -120,7 +125,7 @@ router.get('/orders', adminAuth, (req, res) => {
   res.json(enriched);
 });
 
-router.put('/orders/:id/status', adminAuth, (req, res) => {
+router.put('/orders/:id/status', adminAuth, validateOrderStatus, (req, res) => {
   const orders = readJSON('orders.json');
   const order = orders.find(o => o.id === req.params.id);
   if (!order) return res.status(404).json({ message: '订单不存在' });
