@@ -7,28 +7,33 @@ const API = {
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(this.baseUrl + url, { ...options, headers });
     const data = await res.json();
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      showToast('登录已过期，请重新登录', 'error');
+      setTimeout(() => { window.location.href = '/login.html'; }, 1000);
+      throw new Error('登录已过期');
+    }
     if (!res.ok) throw new Error(data.message || '请求失败');
     return data;
   },
 
-  // Auth
   register: (body) => API.request('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   login: (body) => API.request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   getMe: () => API.request('/auth/me'),
-
-  // Flights
   searchFlights: (params) => {
     const q = new URLSearchParams(params).toString();
     return API.request(`/flights/search?${q}`);
   },
   getFlight: (id) => API.request(`/flights/${id}`),
-
-  // Orders
+  getCities: () => API.request('/flights/search').then(flights => {
+    const cities = new Set();
+    flights.forEach(f => { cities.add(f.departure); cities.add(f.arrival); });
+    return [...cities].sort();
+  }),
   createOrder: (body) => API.request('/orders', { method: 'POST', body: JSON.stringify(body) }),
   getMyOrders: () => API.request('/orders/my'),
   cancelOrder: (id) => API.request(`/orders/${id}/cancel`, { method: 'PUT' }),
-
-  // Admin
   getAdminStats: () => API.request('/admin/stats'),
   getAdminFlights: () => API.request('/admin/flights'),
   addFlight: (body) => API.request('/admin/flights', { method: 'POST', body: JSON.stringify(body) }),
@@ -40,6 +45,17 @@ const API = {
   getAdminOrders: () => API.request('/admin/orders'),
   updateOrderStatus: (id, status) => API.request(`/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 };
+
+function esc(str) {
+  if (str == null) return '';
+  const d = document.createElement('div');
+  d.textContent = String(str);
+  return d.innerHTML;
+}
+
+function fmtPrice(n) {
+  return '¥' + Number(n).toFixed(2);
+}
 
 function showToast(message, type = 'success') {
   const existing = document.querySelector('.toast');
@@ -75,7 +91,7 @@ function updateNavbar() {
       <a href="/search.html">搜索航班</a>
       <a href="/orders.html">我的订单</a>
       ${isAdmin ? '<a href="/admin.html">管理后台</a>' : ''}
-      <span style="color:var(--gray-500);font-size:14px;padding:8px">${user.realName || user.username}</span>
+      <span style="color:var(--gray-500);font-size:14px;padding:8px">${esc(user.realName || user.username)}</span>
       <a href="#" onclick="logout()" class="btn btn-outline btn-sm">退出</a>
     `;
   } else {
@@ -93,5 +109,4 @@ function logout() {
   window.location.href = '/';
 }
 
-// Auto init navbar
 document.addEventListener('DOMContentLoaded', updateNavbar);

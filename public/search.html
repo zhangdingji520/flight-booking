@@ -17,11 +17,11 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:16px;align-items:end">
         <div class="form-group">
           <label>出发城市</label>
-          <input type="text" id="s-departure" placeholder="如：北京">
+          <select id="s-departure"><option value="">全部</option></select>
         </div>
         <div class="form-group">
           <label>到达城市</label>
-          <input type="text" id="s-arrival" placeholder="如：上海">
+          <select id="s-arrival"><option value="">全部</option></select>
         </div>
         <div class="form-group">
           <label>出发日期</label>
@@ -31,10 +31,18 @@
       </div>
     </div>
 
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <select id="sort-select" onchange="doSearch()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--gray-300)">
+        <option value="">默认排序</option>
+        <option value="price">按价格排序</option>
+        <option value="time">按时间排序</option>
+      </select>
+    </div>
+
     <div id="flight-list">
       <div class="empty-state">
         <div class="icon">✈️</div>
-        <p>输入出发地和目的地搜索航班</p>
+        <p>选择出发地和目的地搜索航班</p>
       </div>
     </div>
   </div>
@@ -43,19 +51,32 @@
   <script>
     document.getElementById('s-date').value = new Date().toISOString().split('T')[0];
 
-    // Load params from URL
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('departure')) document.getElementById('s-departure').value = params.get('departure');
-    if (params.get('arrival')) document.getElementById('s-arrival').value = params.get('arrival');
-    if (params.get('date')) document.getElementById('s-date').value = params.get('date');
-    if (params.has('departure') || params.has('arrival')) doSearch();
+    // Populate city dropdowns
+    API.getCities().then(cities => {
+      ['s-departure', 's-arrival'].forEach(id => {
+        const sel = document.getElementById(id);
+        cities.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          sel.appendChild(opt);
+        });
+      });
+      // Load params from URL after cities are loaded
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('departure')) document.getElementById('s-departure').value = params.get('departure');
+      if (params.get('arrival')) document.getElementById('s-arrival').value = params.get('arrival');
+      if (params.get('date')) document.getElementById('s-date').value = params.get('date');
+      if (params.has('departure') || params.has('arrival')) doSearch();
+    }).catch(() => {});
 
     async function doSearch() {
-      const departure = document.getElementById('s-departure').value.trim();
-      const arrival = document.getElementById('s-arrival').value.trim();
+      const departure = document.getElementById('s-departure').value;
+      const arrival = document.getElementById('s-arrival').value;
       const date = document.getElementById('s-date').value;
+      const sort = document.getElementById('sort-select').value;
       try {
-        const flights = await API.searchFlights({ departure, arrival, date });
+        const flights = await API.searchFlights({ departure, arrival, date, sort });
         const list = document.getElementById('flight-list');
         if (!flights.length) {
           list.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>未找到符合条件的航班</p></div>';
@@ -65,21 +86,21 @@
           <div class="flight-card">
             <div class="flight-info">
               <div class="flight-route">
-                <span>${f.departure}</span>
+                <span>${esc(f.departure)}</span>
                 <span class="arrow">→</span>
-                <span>${f.arrival}</span>
+                <span>${esc(f.arrival)}</span>
               </div>
               <div class="flight-meta">
-                <span>${f.airline} ${f.flightNo}</span>
-                <span>${f.departureTime.split(' ')[1]} - ${f.arrivalTime.split(' ')[1]}</span>
-                <span>${f.aircraft}</span>
+                <span>${esc(f.airline)} ${esc(f.flightNo)}</span>
+                <span>${esc(f.departureTime.split(' ')[1])} - ${esc(f.arrivalTime.split(' ')[1])}</span>
+                <span>${esc(f.aircraft)}</span>
                 <span>余票: ${f.availableSeats}</span>
               </div>
             </div>
             <div class="flight-price">
-              <div class="price">¥${f.price}</div>
+              <div class="price">${fmtPrice(f.price)}</div>
               <div class="unit">每人</div>
-              <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="bookFlight('${f.id}')">立即预订</button>
+              <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="bookFlight('${esc(f.id)}')">立即预订</button>
             </div>
           </div>
         `).join('');
@@ -95,7 +116,7 @@
         setTimeout(() => window.location.href = '/login.html', 1000);
         return;
       }
-      window.location.href = `/booking.html?flightId=${id}`;
+      window.location.href = `/booking.html?flightId=${encodeURIComponent(id)}`;
     }
   </script>
 </body>

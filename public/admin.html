@@ -17,9 +17,9 @@
     <div class="stats-grid" id="stats">加载中...</div>
 
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('flights')">航班管理</button>
-      <button class="tab-btn" onclick="switchTab('users')">用户管理</button>
-      <button class="tab-btn" onclick="switchTab('orders')">订单管理</button>
+      <button class="tab-btn active" onclick="switchTab('flights', this)">航班管理</button>
+      <button class="tab-btn" onclick="switchTab('users', this)">用户管理</button>
+      <button class="tab-btn" onclick="switchTab('orders', this)">订单管理</button>
     </div>
 
     <!-- Flights tab -->
@@ -29,7 +29,7 @@
         <button class="btn btn-primary btn-sm" onclick="showFlightModal()">+ 添加航班</button>
       </div>
       <div class="table-wrap">
-        <table id="flights-table">
+        <table>
           <thead>
             <tr>
               <th>航班号</th><th>航空公司</th><th>出发</th><th>到达</th>
@@ -80,7 +80,7 @@
         <div class="form-group"><label>到达城市</label><input id="f-arrival"></div>
         <div class="form-group"><label>出发时间</label><input type="datetime-local" id="f-departureTime"></div>
         <div class="form-group"><label>到达时间</label><input type="datetime-local" id="f-arrivalTime"></div>
-        <div class="form-group"><label>票价</label><input type="number" id="f-price"></div>
+        <div class="form-group"><label>票价</label><input type="number" id="f-price" step="0.01"></div>
         <div class="form-group"><label>总座位数</label><input type="number" id="f-totalSeats"></div>
         <div class="form-group"><label>机型</label><input id="f-aircraft"></div>
         <div class="form-group"><label>状态</label>
@@ -106,7 +106,6 @@
       setTimeout(() => window.location.href = '/', 1000);
     }
 
-    // Stats
     async function loadStats() {
       try {
         const s = await API.getAdminStats();
@@ -114,16 +113,15 @@
           <div class="stat-card"><div class="stat-value">${s.totalUsers}</div><div class="stat-label">注册用户</div></div>
           <div class="stat-card"><div class="stat-value">${s.totalFlights}</div><div class="stat-label">航班数</div></div>
           <div class="stat-card"><div class="stat-value">${s.totalOrders}</div><div class="stat-label">总订单</div></div>
-          <div class="stat-card"><div class="stat-value">¥${s.totalRevenue.toLocaleString()}</div><div class="stat-label">总收入</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtPrice(s.totalRevenue)}</div><div class="stat-label">总收入</div></div>
         `;
       } catch (e) { showToast(e.message, 'error'); }
     }
 
-    // Tabs
-    function switchTab(name) {
+    function switchTab(name, btn) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      event.target.classList.add('active');
+      btn.classList.add('active');
       document.getElementById(`tab-${name}`).classList.add('active');
     }
 
@@ -132,23 +130,26 @@
       try {
         const flights = await API.getAdminFlights();
         const statusMap = { 'on-time': ['准点', 'badge-success'], delayed: ['延误', 'badge-warning'], cancelled: ['取消', 'badge-danger'] };
-        document.getElementById('flights-body').innerHTML = flights.map(f => `
-          <tr>
-            <td><strong>${f.flightNo}</strong></td>
-            <td>${f.airline}</td>
-            <td>${f.departure}</td>
-            <td>${f.arrival}</td>
-            <td>${f.departureTime.replace('T', ' ')}</td>
-            <td>${f.arrivalTime.replace('T', ' ')}</td>
-            <td style="color:var(--danger);font-weight:600">¥${f.price}</td>
-            <td>${f.availableSeats}/${f.totalSeats}</td>
-            <td><span class="badge ${(statusMap[f.status] || ['',''])[1]}">${(statusMap[f.status] || [f.status])[0]}</span></td>
-            <td>
-              <button class="btn btn-outline btn-sm" onclick="editFlight(${JSON.stringify(f).replace(/"/g, '&quot;')})">编辑</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteFlight('${f.id}')">删除</button>
-            </td>
-          </tr>
-        `).join('');
+        document.getElementById('flights-body').innerHTML = flights.map(f => {
+          const [st, cls] = statusMap[f.status] || [esc(f.status), 'badge-info'];
+          return `
+            <tr>
+              <td><strong>${esc(f.flightNo)}</strong></td>
+              <td>${esc(f.airline)}</td>
+              <td>${esc(f.departure)}</td>
+              <td>${esc(f.arrival)}</td>
+              <td>${esc(f.departureTime.replace('T', ' '))}</td>
+              <td>${esc(f.arrivalTime.replace('T', ' '))}</td>
+              <td style="color:var(--danger);font-weight:600">${fmtPrice(f.price)}</td>
+              <td>${f.availableSeats}/${f.totalSeats}</td>
+              <td><span class="badge ${cls}">${st}</span></td>
+              <td>
+                <button class="btn btn-outline btn-sm" onclick="editFlight('${esc(f.id)}')">编辑</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteFlight('${esc(f.id)}')">删除</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
       } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -173,7 +174,14 @@
       document.getElementById('flight-modal').classList.add('active');
     }
 
-    function editFlight(flight) { showFlightModal(flight); }
+    async function editFlight(id) {
+      try {
+        const flights = await API.getAdminFlights();
+        const flight = flights.find(f => f.id === id);
+        if (flight) showFlightModal(flight);
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
     function closeFlightModal() { document.getElementById('flight-modal').classList.remove('active'); }
 
     async function saveFlight() {
@@ -185,7 +193,7 @@
         arrival: document.getElementById('f-arrival').value.trim(),
         departureTime: document.getElementById('f-departureTime').value.replace('T', ' '),
         arrivalTime: document.getElementById('f-arrivalTime').value.replace('T', ' '),
-        price: parseInt(document.getElementById('f-price').value),
+        price: parseFloat(document.getElementById('f-price').value),
         totalSeats: parseInt(document.getElementById('f-totalSeats').value),
         aircraft: document.getElementById('f-aircraft').value.trim(),
         status: document.getElementById('f-status').value
@@ -219,13 +227,13 @@
         const users = await API.getAdminUsers();
         document.getElementById('users-body').innerHTML = users.map(u => `
           <tr>
-            <td><strong>${u.username}</strong></td>
-            <td>${u.realName}</td>
-            <td>${u.email || '-'}</td>
-            <td>${u.phone || '-'}</td>
+            <td><strong>${esc(u.username)}</strong></td>
+            <td>${esc(u.realName)}</td>
+            <td>${esc(u.email || '-')}</td>
+            <td>${esc(u.phone || '-')}</td>
             <td><span class="badge ${u.role === 'admin' ? 'badge-info' : 'badge-success'}">${u.role === 'admin' ? '管理员' : '用户'}</span></td>
             <td>${new Date(u.createdAt).toLocaleDateString()}</td>
-            <td>${u.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">删除</button>` : '-'}</td>
+            <td>${u.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')">删除</button>` : '-'}</td>
           </tr>
         `).join('');
       } catch (e) { showToast(e.message, 'error'); }
@@ -247,19 +255,19 @@
         const orders = await API.getAdminOrders();
         const statusMap = { paid: ['已支付', 'badge-success'], cancelled: ['已取消', 'badge-danger'], completed: ['已完成', 'badge-info'], refunded: ['已退款', 'badge-warning'] };
         document.getElementById('orders-body').innerHTML = orders.map(o => {
-          const [st, cls] = statusMap[o.status] || [o.status, 'badge-info'];
+          const [st, cls] = statusMap[o.status] || [esc(o.status), 'badge-info'];
           return `
             <tr>
-              <td><strong>${o.id}</strong></td>
-              <td>${o.username}</td>
-              <td>${o.flightNo}</td>
-              <td>${o.departure} → ${o.arrival}</td>
-              <td>${o.passengers.map(p => p.name).join(', ')}</td>
-              <td style="color:var(--danger);font-weight:600">¥${o.totalPrice}</td>
+              <td><strong>${esc(o.id)}</strong></td>
+              <td>${esc(o.username)}</td>
+              <td>${esc(o.flightNo)}</td>
+              <td>${esc(o.departure)} → ${esc(o.arrival)}</td>
+              <td>${o.passengers.map(p => esc(p.name)).join(', ')}</td>
+              <td style="color:var(--danger);font-weight:600">${fmtPrice(o.totalPrice)}</td>
               <td><span class="badge ${cls}">${st}</span></td>
               <td>${new Date(o.createdAt).toLocaleString()}</td>
               <td>
-                <select onchange="updateOrderStatus('${o.id}', this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--gray-300)">
+                <select onchange="updateOrderStatus('${esc(o.id)}', this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--gray-300)">
                   <option value="paid" ${o.status === 'paid' ? 'selected' : ''}>已支付</option>
                   <option value="completed" ${o.status === 'completed' ? 'selected' : ''}>已完成</option>
                   <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>已取消</option>
@@ -280,7 +288,6 @@
       } catch (e) { showToast(e.message, 'error'); }
     }
 
-    // Init
     loadStats();
     loadFlights();
     loadUsers();

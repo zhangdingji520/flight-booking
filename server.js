@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { PORT } = require('./config');
+const db = require('./db');
 
 const authRoutes = require('./routes/auth');
 const flightRoutes = require('./routes/flights');
@@ -50,8 +51,7 @@ for (const [file, defaultData] of Object.entries(dataFiles)) {
 }
 
 // Ensure default admin user
-const usersPath = path.join(dataDir, 'users.json');
-const users = JSON.parse(fs.readFileSync(usersPath, 'utf8'));
+const users = db.read('users.json');
 if (!users.find(u => u.role === 'admin')) {
   const bcrypt = require('bcryptjs');
   users.push({
@@ -64,7 +64,7 @@ if (!users.find(u => u.role === 'admin')) {
     role: 'admin',
     createdAt: new Date().toISOString()
   });
-  fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
+  db.write('users.json', users);
 }
 
 // API routes
