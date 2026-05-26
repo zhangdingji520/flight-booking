@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>航空订票 - 预订</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">✈️ 航空订票</a>
+    <div class="nav-links" id="nav-links"></div>
+  </nav>
+
+  <div class="container">
+    <div class="card" id="flight-detail">加载中...</div>
+
+    <div class="card">
+      <h3 style="margin-bottom:16px">乘客信息</h3>
+      <div id="passenger-list"></div>
+      <button class="btn btn-outline btn-sm" onclick="addPassenger()">+ 添加乘客</button>
+    </div>
+
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <span style="color:var(--gray-500)">总计: </span>
+        <span id="total-price" style="font-size:24px;font-weight:700;color:var(--danger)">¥0</span>
+        <span style="color:var(--gray-500);margin-left:8px" id="price-detail"></span>
+      </div>
+      <button class="btn btn-primary" onclick="doBook()">确认订票</button>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const user = checkAuth();
+    let flight = null;
+
+    async function loadFlight() {
+      const params = new URLSearchParams(window.location.search);
+      const flightId = params.get('flightId');
+      if (!flightId) { window.location.href = '/'; return; }
+      try {
+        flight = await API.getFlight(flightId);
+        document.getElementById('flight-detail').innerHTML = `
+          <h3>${flight.airline} ${flight.flightNo}</h3>
+          <div class="flight-route" style="margin-top:12px">
+            <span>${flight.departure}</span>
+            <span class="arrow">→</span>
+            <span>${flight.arrival}</span>
+          </div>
+          <div class="flight-meta" style="margin-top:8px">
+            <span>出发: ${flight.departureTime}</span>
+            <span>到达: ${flight.arrivalTime}</span>
+            <span>机型: ${flight.aircraft}</span>
+            <span>余票: ${flight.availableSeats}</span>
+          </div>
+          <div style="margin-top:12px;font-size:20px;font-weight:700;color:var(--danger)">¥${flight.price}/人</div>
+        `;
+        addPassenger();
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    function addPassenger() {
+      const list = document.getElementById('passenger-list');
+      const idx = list.children.length;
+      if (idx >= 5) return showToast('最多5位乘客', 'error');
+      if (flight && idx >= flight.availableSeats) return showToast('余票不足', 'error');
+      const div = document.createElement('div');
+      div.className = 'passenger-item';
+      div.innerHTML = `
+        <input type="text" placeholder="姓名" class="pax-name" style="flex:1">
+        <input type="text" placeholder="身份证号" class="pax-id" style="flex:1.5">
+        <button class="remove-pax" onclick="this.parentElement.remove();updatePrice()">✕</button>
+      `;
+      list.appendChild(div);
+      updatePrice();
+    }
+
+    function updatePrice() {
+      if (!flight) return;
+      const count = document.querySelectorAll('.passenger-item').length;
+      document.getElementById('total-price').textContent = `¥${flight.price * count}`;
+      document.getElementById('price-detail').textContent = `${count} × ¥${flight.price}`;
+    }
+
+    async function doBook() {
+      const passengers = [];
+      document.querySelectorAll('.passenger-item').forEach(item => {
+        const name = item.querySelector('.pax-name').value.trim();
+        const idCard = item.querySelector('.pax-id').value.trim();
+        if (name) passengers.push({ name, idCard });
+      });
+      if (!passengers.length) return showToast('请至少填写一位乘客', 'error');
+      try {
+        const res = await API.createOrder({ flightId: flight.id, passengers });
+        showToast('订票成功！');
+        setTimeout(() => window.location.href = '/orders.html', 1000);
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    loadFlight();
+  </script>
+</body>
+</html>

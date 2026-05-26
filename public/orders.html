@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>航空订票 - 我的订单</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">✈️ 航空订票</a>
+    <div class="nav-links" id="nav-links"></div>
+  </nav>
+
+  <div class="container">
+    <h2 style="margin-bottom:20px">我的订单</h2>
+    <div id="order-list">加载中...</div>
+  </div>
+
+  <!-- Order detail modal -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <h3>订单详情</h3>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    checkAuth();
+
+    async function loadOrders() {
+      try {
+        const orders = await API.getMyOrders();
+        const list = document.getElementById('order-list');
+        if (!orders.length) {
+          list.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>暂无订单</p></div>';
+          return;
+        }
+        list.innerHTML = orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(o => {
+          const statusMap = {
+            paid: ['已支付', 'badge-success'],
+            cancelled: ['已取消', 'badge-danger'],
+            completed: ['已完成', 'badge-info'],
+            refunded: ['已退款', 'badge-warning']
+          };
+          const [statusText, statusClass] = statusMap[o.status] || [o.status, 'badge-info'];
+          return `
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                  <strong>${o.orderId || o.id}</strong>
+                  <span class="badge ${statusClass}" style="margin-left:8px">${statusText}</span>
+                </div>
+                <div style="font-size:12px;color:var(--gray-500)">${new Date(o.createdAt).toLocaleString()}</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:18px;font-weight:600">${o.departure} → ${o.arrival}</div>
+                  <div style="font-size:14px;color:var(--gray-500);margin-top:4px">${o.airline} ${o.flightNo} | ${o.departureTime}</div>
+                  <div style="font-size:14px;color:var(--gray-500)">乘客: ${o.passengers.map(p => p.name).join(', ')}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:22px;font-weight:700;color:var(--danger)">¥${o.totalPrice}</div>
+                  <div style="margin-top:8px;display:flex;gap:8px">
+                    <button class="btn btn-outline btn-sm" onclick="showDetail('${o.id}')">详情</button>
+                    ${o.status === 'paid' ? `<button class="btn btn-danger btn-sm" onclick="cancelOrder('${o.id}')">取消</button>` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    async function cancelOrder(id) {
+      if (!confirm('确定要取消该订单吗？')) return;
+      try {
+        await API.cancelOrder(id);
+        showToast('取消成功');
+        loadOrders();
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    async function showDetail(id) {
+      try {
+        const orders = await API.getMyOrders();
+        const o = orders.find(x => x.id === id);
+        if (!o) return;
+        document.getElementById('modal-body').innerHTML = `
+          <div class="order-detail">
+            <div class="detail-row"><span>订单号</span><span>${o.id}</span></div>
+            <div class="detail-row"><span>航班</span><span>${o.airline} ${o.flightNo}</span></div>
+            <div class="detail-row"><span>航线</span><span>${o.departure} → ${o.arrival}</span></div>
+            <div class="detail-row"><span>出发时间</span><span>${o.departureTime}</span></div>
+            <div class="detail-row"><span>到达时间</span><span>${o.arrivalTime}</span></div>
+            <div class="detail-row"><span>票价</span><span>¥${o.unitPrice}/人</span></div>
+            <div class="detail-row"><span>人数</span><span>${o.passengers.length}人</span></div>
+            <div class="detail-row"><span>总价</span><span style="font-weight:700;color:var(--danger)">¥${o.totalPrice}</span></div>
+            <div style="margin-top:12px;font-weight:600">乘客信息:</div>
+            ${o.passengers.map(p => `<div class="detail-row"><span>${p.name}</span><span>${p.idCard || '未填写'}</span></div>`).join('')}
+          </div>
+        `;
+        document.getElementById('modal-overlay').classList.add('active');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('active');
+    }
+
+    document.getElementById('modal-overlay').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeModal();
+    });
+
+    loadOrders();
+  </script>
+</body>
+</html>
