@@ -2,4 +2,6 @@ node_modules/
 data/users.json
 data/orders.json
 data/flights.json
+data/notifications.json
 .env
+coverage/
