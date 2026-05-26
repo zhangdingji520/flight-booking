@@ -29,7 +29,7 @@ const JWT_SECRET = process.env.JWT_SECRET || (() => {
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 
-const VALID_ORDER_STATUSES = ['paid', 'completed', 'cancelled', 'refunded'];
+const VALID_ORDER_STATUSES = ['paid', 'completed', 'cancelled', 'refunded', 'refund_pending'];
 const VALID_FLIGHT_STATUSES = ['on-time', 'delayed', 'cancelled'];
 
 module.exports = { JWT_SECRET, PORT, VALID_ORDER_STATUSES, VALID_FLIGHT_STATUSES };

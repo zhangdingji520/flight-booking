@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>航空订票 - 个人中心</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">✈️ 航空订票</a>
+    <div class="nav-links" id="nav-links"></div>
+  </nav>
+
+  <div class="container" style="max-width:800px">
+    <h2 style="margin-bottom:20px">个人中心</h2>
+
+    <div class="stats-grid" id="stats"><div class="loading-container"><div class="spinner"></div></div></div>
+
+    <div class="card">
+      <h3 style="margin-bottom:16px">基本信息</h3>
+      <div class="form-group">
+        <label>用户名</label>
+        <input type="text" id="username" disabled style="background:var(--gray-100)">
+      </div>
+      <div class="form-group">
+        <label>真实姓名</label>
+        <input type="text" id="realName" placeholder="请输入姓名">
+      </div>
+      <div class="form-group">
+        <label>邮箱</label>
+        <input type="email" id="email" placeholder="请输入邮箱">
+      </div>
+      <div class="form-group">
+        <label>手机号</label>
+        <input type="text" id="phone" placeholder="请输入手机号">
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;color:var(--gray-500)" id="created-at"></span>
+        <button class="btn btn-primary" id="save-btn" onclick="saveProfile()">保存修改</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:16px">修改密码</h3>
+      <div class="form-group">
+        <label>当前密码</label>
+        <input type="password" id="oldPassword" placeholder="请输入当前密码">
+      </div>
+      <div class="form-group">
+        <label>新密码</label>
+        <input type="password" id="newPassword" placeholder="请输入新密码（至少6位）">
+      </div>
+      <div class="form-group">
+        <label>确认新密码</label>
+        <input type="password" id="confirmPassword" placeholder="请再次输入新密码">
+      </div>
+      <div style="text-align:right">
+        <button class="btn btn-primary" id="pwd-btn" onclick="changePassword()">修改密码</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    checkAuth();
+
+    async function loadProfile() {
+      try {
+        const [user, stats] = await Promise.all([API.getMe(), API.getProfileStats()]);
+        document.getElementById('username').value = user.username;
+        document.getElementById('realName').value = user.realName || '';
+        document.getElementById('email').value = user.email || '';
+        document.getElementById('phone').value = user.phone || '';
+        document.getElementById('created-at').textContent = '注册时间: ' + new Date(user.createdAt).toLocaleDateString();
+
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card"><div class="stat-value">${stats.totalOrders}</div><div class="stat-label">总订单</div></div>
+          <div class="stat-card"><div class="stat-value">${stats.paidOrders}</div><div class="stat-label">待出行</div></div>
+          <div class="stat-card"><div class="stat-value">${stats.completedOrders}</div><div class="stat-label">已完成</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtPrice(stats.totalSpent)}</div><div class="stat-label">累计消费</div></div>
+        `;
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function saveProfile() {
+      const btn = document.getElementById('save-btn');
+      const body = {
+        realName: document.getElementById('realName').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        phone: document.getElementById('phone').value.trim()
+      };
+      setBtnLoading(btn, true);
+      try {
+        const res = await API.updateProfile(body);
+        localStorage.setItem('user', JSON.stringify(res.user));
+        showToast('保存成功');
+        updateNavbar();
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { setBtnLoading(btn, false); }
+    }
+
+    async function changePassword() {
+      const btn = document.getElementById('pwd-btn');
+      const oldPassword = document.getElementById('oldPassword').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      if (!oldPassword || !newPassword) return showToast('请填写完整', 'error');
+      if (newPassword.length < 6) return showToast('新密码至少6位', 'error');
+      if (newPassword !== confirmPassword) return showToast('两次密码不一致', 'error');
+      setBtnLoading(btn, true);
+      try {
+        await API.changePassword({ oldPassword, newPassword });
+        showToast('密码修改成功');
+        document.getElementById('oldPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { setBtnLoading(btn, false); }
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

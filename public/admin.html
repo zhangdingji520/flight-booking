@@ -119,6 +119,43 @@
     </div>
   </div>
 
+  <!-- Refund approve modal -->
+  <div class="modal-overlay" id="refund-modal">
+    <div class="modal">
+      <h3>退款审核</h3>
+      <p id="refund-info" style="margin-bottom:12px"></p>
+      <div id="refund-reason-display" style="padding:12px;background:var(--gray-100);border-radius:8px;margin-bottom:16px"></div>
+      <div class="form-group" id="reject-reason-group" style="display:none">
+        <label>拒绝原因</label>
+        <input type="text" id="reject-reason" placeholder="请填写拒绝原因">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeRefundModal()">取消</button>
+        <button class="btn btn-danger" onclick="rejectRefund()">拒绝退款</button>
+        <button class="btn btn-success" onclick="approveRefund()">同意退款</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User edit modal -->
+  <div class="modal-overlay" id="user-modal">
+    <div class="modal">
+      <h3>编辑用户</h3>
+      <input type="hidden" id="u-edit-id">
+      <div class="form-group"><label>用户名</label><input id="u-username" disabled style="background:var(--gray-100)"></div>
+      <div class="form-group"><label>真实姓名</label><input id="u-realName"></div>
+      <div class="form-group"><label>邮箱</label><input id="u-email"></div>
+      <div class="form-group"><label>手机号</label><input id="u-phone"></div>
+      <div class="form-group"><label>角色</label>
+        <select id="u-role"><option value="user">用户</option><option value="admin">管理员</option></select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeUserModal()">取消</button>
+        <button class="btn btn-primary" id="save-user-btn" onclick="saveUser()">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/api.js"></script>
   <script>
     const currentUser = checkAuth();
@@ -128,7 +165,7 @@
     }
 
     let allFlights = [], allUsers = [], allOrders = [];
-    let pendingStatusUpdate = null;
+    let pendingStatusUpdate = null, pendingRefundOrder = null;
 
     async function loadStats() {
       try {
@@ -138,6 +175,7 @@
           <div class="stat-card"><div class="stat-value">${s.totalFlights}</div><div class="stat-label">航班数</div></div>
           <div class="stat-card"><div class="stat-value">${s.totalOrders}</div><div class="stat-label">总订单</div></div>
           <div class="stat-card"><div class="stat-value">${fmtPrice(s.totalRevenue)}</div><div class="stat-label">总收入</div></div>
+          ${s.pendingRefunds > 0 ? `<div class="stat-card"><div class="stat-value" style="color:var(--warning)">${s.pendingRefunds}</div><div class="stat-label">待审核退款</div></div>` : ''}
         `;
       } catch (e) { showToast(e.message, 'error'); }
     }
@@ -275,7 +313,7 @@
           <td>${esc(u.phone || '-')}</td>
           <td><span class="badge ${u.role === 'admin' ? 'badge-info' : 'badge-success'}">${u.role === 'admin' ? '管理员' : '用户'}</span></td>
           <td>${new Date(u.createdAt).toLocaleDateString()}</td>
-          <td>${u.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')">删除</button>` : '-'}</td>
+          <td>${u.role !== 'admin' ? `<button class="btn btn-outline btn-sm" onclick="editUser('${esc(u.id)}')">编辑</button><button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')">删除</button>` : '-'}</td>
         </tr>
       `).join('');
     }
@@ -308,7 +346,7 @@
     }
 
     function renderOrders(orders) {
-      const statusMap = { paid: ['已支付', 'badge-success'], cancelled: ['已取消', 'badge-danger'], completed: ['已完成', 'badge-info'], refunded: ['已退款', 'badge-warning'] };
+      const statusMap = { paid: ['已支付', 'badge-success'], cancelled: ['已取消', 'badge-danger'], completed: ['已完成', 'badge-info'], refunded: ['已退款', 'badge-warning'], refund_pending: ['退款审核中', 'badge-warning'] };
       document.getElementById('orders-body').innerHTML = orders.map(o => {
         const [st, cls] = statusMap[o.status] || [esc(o.status), 'badge-info'];
         return `
@@ -322,12 +360,13 @@
             <td><span class="badge ${cls}">${st}</span></td>
             <td>${new Date(o.createdAt).toLocaleString()}</td>
             <td>
+              ${o.status === 'refund_pending' ? `<button class="btn btn-success btn-sm" onclick="showRefundApprove('${esc(o.id)}')">审核</button>` : `
               <select onchange="confirmStatusChange('${esc(o.id)}', '${esc(o.status)}', this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--gray-300)">
                 <option value="paid" ${o.status === 'paid' ? 'selected' : ''}>已支付</option>
                 <option value="completed" ${o.status === 'completed' ? 'selected' : ''}>已完成</option>
                 <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>已取消</option>
                 <option value="refunded" ${o.status === 'refunded' ? 'selected' : ''}>已退款</option>
-              </select>
+              </select>`}
             </td>
           </tr>
         `;
@@ -380,6 +419,83 @@
 
     document.getElementById('status-modal').addEventListener('click', e => {
       if (e.target === e.currentTarget) closeStatusModal();
+    });
+
+    // === User edit ===
+    function editUser(id) {
+      const u = allUsers.find(x => x.id === id);
+      if (!u) return;
+      document.getElementById('u-edit-id').value = u.id;
+      document.getElementById('u-username').value = u.username;
+      document.getElementById('u-realName').value = u.realName || '';
+      document.getElementById('u-email').value = u.email || '';
+      document.getElementById('u-phone').value = u.phone || '';
+      document.getElementById('u-role').value = u.role;
+      document.getElementById('user-modal').classList.add('active');
+    }
+    function closeUserModal() { document.getElementById('user-modal').classList.remove('active'); }
+    async function saveUser() {
+      const btn = document.getElementById('save-user-btn');
+      const id = document.getElementById('u-edit-id').value;
+      setBtnLoading(btn, true);
+      try {
+        await API.updateUser(id, {
+          realName: document.getElementById('u-realName').value.trim(),
+          email: document.getElementById('u-email').value.trim(),
+          phone: document.getElementById('u-phone').value.trim(),
+          role: document.getElementById('u-role').value
+        });
+        showToast('更新成功');
+        closeUserModal();
+        loadUsers();
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { setBtnLoading(btn, false); }
+    }
+    document.getElementById('user-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeUserModal();
+    });
+
+    // === Refund approve ===
+    function showRefundApprove(id) {
+      const o = allOrders.find(x => x.id === id);
+      if (!o) return;
+      pendingRefundOrder = id;
+      document.getElementById('refund-info').textContent = `订单 ${o.id} - ${o.username} - ${fmtPrice(o.totalPrice)}`;
+      document.getElementById('refund-reason-display').innerHTML = `<strong>退款原因：</strong>${esc(o.refundReason || '未填写')}`;
+      document.getElementById('reject-reason').value = '';
+      document.getElementById('reject-reason-group').style.display = 'none';
+      document.getElementById('refund-modal').classList.add('active');
+    }
+    function closeRefundModal() {
+      document.getElementById('refund-modal').classList.remove('active');
+      pendingRefundOrder = null;
+    }
+    async function approveRefund() {
+      if (!pendingRefundOrder) return;
+      try {
+        await API.approveRefund(pendingRefundOrder, true);
+        showToast('退款已通过');
+        closeRefundModal();
+        loadOrders(); loadStats();
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+    async function rejectRefund() {
+      if (!pendingRefundOrder) return;
+      const reason = document.getElementById('reject-reason').value.trim();
+      if (!reason) {
+        document.getElementById('reject-reason-group').style.display = 'block';
+        document.getElementById('reject-reason').focus();
+        return;
+      }
+      try {
+        await API.approveRefund(pendingRefundOrder, false, reason);
+        showToast('退款已拒绝');
+        closeRefundModal();
+        loadOrders(); loadStats();
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+    document.getElementById('refund-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeRefundModal();
     });
 
     loadStats();

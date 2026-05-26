@@ -20,8 +20,24 @@
       <button class="filter-btn" onclick="filterOrders('completed', this)">已完成</button>
       <button class="filter-btn" onclick="filterOrders('cancelled', this)">已取消</button>
       <button class="filter-btn" onclick="filterOrders('refunded', this)">已退款</button>
+      <button class="filter-btn" onclick="filterOrders('refund_pending', this)">退款中</button>
     </div>
     <div id="order-list"><div class="loading-container"><div class="spinner"></div><span>加载中...</span></div></div>
+  </div>
+
+  <!-- Refund request modal -->
+  <div class="modal-overlay" id="refund-modal">
+    <div class="modal">
+      <h3>申请退款</h3>
+      <div class="form-group">
+        <label>退款原因</label>
+        <textarea id="refund-reason" rows="3" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;resize:vertical" placeholder="请填写退款原因"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeRefundModal()">取消</button>
+        <button class="btn btn-primary" id="refund-btn" onclick="submitRefund()">提交申请</button>
+      </div>
+    </div>
   </div>
 
   <div class="modal-overlay" id="modal-overlay">
@@ -70,7 +86,8 @@
         paid: ['已支付', 'badge-success'],
         cancelled: ['已取消', 'badge-danger'],
         completed: ['已完成', 'badge-info'],
-        refunded: ['已退款', 'badge-warning']
+        refunded: ['已退款', 'badge-warning'],
+        refund_pending: ['退款审核中', 'badge-warning']
       };
 
       list.innerHTML = orders.map(o => {
@@ -95,7 +112,7 @@
                 <div style="font-size:22px;font-weight:700;color:var(--danger)">${fmtPrice(o.totalPrice)}</div>
                 <div style="margin-top:8px;display:flex;gap:8px">
                   <button class="btn btn-outline btn-sm" onclick="showDetail('${esc(o.id)}')">详情</button>
-                  ${o.status === 'paid' ? `<button class="btn btn-danger btn-sm" onclick="cancelOrder('${esc(o.id)}')">取消</button>` : ''}
+                  ${o.status === 'paid' ? `<button class="btn btn-outline btn-sm" onclick="showRefundModal('${esc(o.id)}')">申请退款</button><button class="btn btn-danger btn-sm" onclick="cancelOrder('${esc(o.id)}')">取消</button>` : ''}
                   ${canRebook ? `<a href="/search.html?departure=${encodeURIComponent(o.departure)}&arrival=${encodeURIComponent(o.arrival)}" class="btn btn-primary btn-sm">再次预订</a>` : ''}
                 </div>
               </div>
@@ -144,6 +161,34 @@
     document.getElementById('modal-overlay').addEventListener('click', e => {
       if (e.target === e.currentTarget) closeModal();
     });
+
+    document.getElementById('refund-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeRefundModal();
+    });
+
+    let refundOrderId = null;
+    function showRefundModal(id) {
+      refundOrderId = id;
+      document.getElementById('refund-reason').value = '';
+      document.getElementById('refund-modal').classList.add('active');
+    }
+    function closeRefundModal() {
+      document.getElementById('refund-modal').classList.remove('active');
+      refundOrderId = null;
+    }
+    async function submitRefund() {
+      const btn = document.getElementById('refund-btn');
+      const reason = document.getElementById('refund-reason').value.trim();
+      if (!reason) return showToast('请填写退款原因', 'error');
+      setBtnLoading(btn, true);
+      try {
+        await API.requestRefund(refundOrderId, reason);
+        closeRefundModal();
+        showToast('退款申请已提交');
+        loadOrders();
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { setBtnLoading(btn, false); }
+    }
 
     loadOrders();
   </script>
