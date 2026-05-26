@@ -14,10 +14,13 @@
 
   <div class="container">
     <div class="card" style="margin-bottom:24px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:16px;align-items:end">
+      <div style="display:grid;grid-template-columns:1fr auto 1fr 1fr auto;gap:12px;align-items:end">
         <div class="form-group">
           <label>出发城市</label>
           <select id="s-departure"><option value="">全部</option></select>
+        </div>
+        <div style="padding-bottom:2px">
+          <button class="swap-btn" onclick="swapCities()" title="交换城市">⇄</button>
         </div>
         <div class="form-group">
           <label>到达城市</label>
@@ -31,7 +34,8 @@
       </div>
     </div>
 
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <div class="result-header">
+      <span class="result-count" id="result-count"></span>
       <select id="sort-select" onchange="doSearch()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--gray-300)">
         <option value="">默认排序</option>
         <option value="price">按价格排序</option>
@@ -51,18 +55,15 @@
   <script>
     document.getElementById('s-date').value = new Date().toISOString().split('T')[0];
 
-    // Populate city dropdowns
     API.getCities().then(cities => {
       ['s-departure', 's-arrival'].forEach(id => {
         const sel = document.getElementById(id);
         cities.forEach(c => {
           const opt = document.createElement('option');
-          opt.value = c;
-          opt.textContent = c;
+          opt.value = c; opt.textContent = c;
           sel.appendChild(opt);
         });
       });
-      // Load params from URL after cities are loaded
       const params = new URLSearchParams(window.location.search);
       if (params.get('departure')) document.getElementById('s-departure').value = params.get('departure');
       if (params.get('arrival')) document.getElementById('s-arrival').value = params.get('arrival');
@@ -70,14 +71,24 @@
       if (params.has('departure') || params.has('arrival')) doSearch();
     }).catch(() => {});
 
+    function swapCities() {
+      const dep = document.getElementById('s-departure');
+      const arr = document.getElementById('s-arrival');
+      const tmp = dep.value;
+      dep.value = arr.value;
+      arr.value = tmp;
+    }
+
     async function doSearch() {
       const departure = document.getElementById('s-departure').value;
       const arrival = document.getElementById('s-arrival').value;
       const date = document.getElementById('s-date').value;
       const sort = document.getElementById('sort-select').value;
+      const list = document.getElementById('flight-list');
+      showLoading(list);
       try {
         const flights = await API.searchFlights({ departure, arrival, date, sort });
-        const list = document.getElementById('flight-list');
+        document.getElementById('result-count').textContent = `共找到 ${flights.length} 个航班`;
         if (!flights.length) {
           list.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>未找到符合条件的航班</p></div>';
           return;
@@ -89,12 +100,13 @@
                 <span>${esc(f.departure)}</span>
                 <span class="arrow">→</span>
                 <span>${esc(f.arrival)}</span>
+                <span class="flight-duration">${esc(fmtDuration(f.departureTime, f.arrivalTime))}</span>
               </div>
               <div class="flight-meta">
                 <span>${esc(f.airline)} ${esc(f.flightNo)}</span>
                 <span>${esc(f.departureTime.split(' ')[1])} - ${esc(f.arrivalTime.split(' ')[1])}</span>
                 <span>${esc(f.aircraft)}</span>
-                <span>余票: ${f.availableSeats}</span>
+                <span class="${seatClass(f.availableSeats, f.totalSeats)}">余票: ${f.availableSeats}${f.availableSeats <= Math.floor(f.totalSeats * 0.2) ? ' ⚠️' : ''}</span>
               </div>
             </div>
             <div class="flight-price">
@@ -113,7 +125,7 @@
       const user = getUser();
       if (!user) {
         showToast('请先登录', 'error');
-        setTimeout(() => window.location.href = '/login.html', 1000);
+        setTimeout(() => window.location.href = '/login.html?redirect=' + encodeURIComponent('/booking.html?flightId=' + id), 1000);
         return;
       }
       window.location.href = `/booking.html?flightId=${encodeURIComponent(id)}`;
