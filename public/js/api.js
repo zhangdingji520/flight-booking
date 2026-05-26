@@ -55,7 +55,7 @@ const API = {
 };
 
 function esc(str) {
-  if (str == null) return '';
+  if (str === null || str === undefined) return '';
   const d = document.createElement('div');
   d.textContent = String(str);
   return d.innerHTML;
@@ -157,7 +157,7 @@ async function loadNotifBadge() {
       badge.style.display = '';
       badge.textContent = data.unreadCount > 99 ? '99+' : data.unreadCount;
     }
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 function toggleNotifications(e) {
@@ -200,7 +200,7 @@ async function markRead(id) {
     await API.markNotificationRead(id);
     const el = document.querySelector(`[onclick="markRead('${id}')"]`);
     if (el) el.style.background = 'white';
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 async function markAllRead() {
@@ -209,7 +209,7 @@ async function markAllRead() {
     toggleNotifications(null);
     const badge = document.getElementById('notif-badge');
     if (badge) badge.style.display = 'none';
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 function logout() {
