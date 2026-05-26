@@ -4,16 +4,9 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { JWT_SECRET } = require('../config');
 const { authMiddleware } = require('../middleware/auth');
+const db = require('../db');
 
 const router = express.Router();
-const usersFile = require('path').join(__dirname, '..', 'data', 'users.json');
-
-function readUsers() {
-  return JSON.parse(require('fs').readFileSync(usersFile, 'utf8'));
-}
-function writeUsers(users) {
-  require('fs').writeFileSync(usersFile, JSON.stringify(users, null, 2));
-}
 
 // Register
 router.post('/register', (req, res) => {
@@ -27,7 +20,7 @@ router.post('/register', (req, res) => {
   if (username.length < 2 || username.length > 20) {
     return res.status(400).json({ message: '用户名长度需在2-20之间' });
   }
-  const users = readUsers();
+  const users = db.read('users.json');
   if (users.find(u => u.username === username)) {
     return res.status(400).json({ message: '用户名已存在' });
   }
@@ -42,7 +35,7 @@ router.post('/register', (req, res) => {
     createdAt: new Date().toISOString()
   };
   users.push(newUser);
-  writeUsers(users);
+  db.write('users.json', users);
   const token = jwt.sign({ id: newUser.id, username: newUser.username, role: newUser.role }, JWT_SECRET, { expiresIn: '24h' });
   res.json({
     message: '注册成功',
@@ -57,7 +50,7 @@ router.post('/login', (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ message: '用户名和密码不能为空' });
   }
-  const users = readUsers();
+  const users = db.read('users.json');
   const user = users.find(u => u.username === username);
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ message: '用户名或密码错误' });
@@ -72,7 +65,7 @@ router.post('/login', (req, res) => {
 
 // Get current user
 router.get('/me', authMiddleware, (req, res) => {
-  const users = readUsers();
+  const users = db.read('users.json');
   const user = users.find(u => u.id === req.user.id);
   if (!user) return res.status(404).json({ message: '用户不存在' });
   res.json({ id: user.id, username: user.username, realName: user.realName, email: user.email, phone: user.phone, role: user.role });

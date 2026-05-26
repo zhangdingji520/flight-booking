@@ -24,7 +24,7 @@
     <div class="card" style="display:flex;justify-content:space-between;align-items:center">
       <div>
         <span style="color:var(--gray-500)">总计: </span>
-        <span id="total-price" style="font-size:24px;font-weight:700;color:var(--danger)">¥0</span>
+        <span id="total-price" style="font-size:24px;font-weight:700;color:var(--danger)"></span>
         <span style="color:var(--gray-500);margin-left:8px" id="price-detail"></span>
       </div>
       <button class="btn btn-primary" onclick="doBook()">确认订票</button>
@@ -43,19 +43,19 @@
       try {
         flight = await API.getFlight(flightId);
         document.getElementById('flight-detail').innerHTML = `
-          <h3>${flight.airline} ${flight.flightNo}</h3>
+          <h3>${esc(flight.airline)} ${esc(flight.flightNo)}</h3>
           <div class="flight-route" style="margin-top:12px">
-            <span>${flight.departure}</span>
+            <span>${esc(flight.departure)}</span>
             <span class="arrow">→</span>
-            <span>${flight.arrival}</span>
+            <span>${esc(flight.arrival)}</span>
           </div>
           <div class="flight-meta" style="margin-top:8px">
-            <span>出发: ${flight.departureTime}</span>
-            <span>到达: ${flight.arrivalTime}</span>
-            <span>机型: ${flight.aircraft}</span>
+            <span>出发: ${esc(flight.departureTime)}</span>
+            <span>到达: ${esc(flight.arrivalTime)}</span>
+            <span>机型: ${esc(flight.aircraft)}</span>
             <span>余票: ${flight.availableSeats}</span>
           </div>
-          <div style="margin-top:12px;font-size:20px;font-weight:700;color:var(--danger)">¥${flight.price}/人</div>
+          <div style="margin-top:12px;font-size:20px;font-weight:700;color:var(--danger)">${fmtPrice(flight.price)}/人</div>
         `;
         addPassenger();
       } catch (e) {
@@ -82,8 +82,8 @@
     function updatePrice() {
       if (!flight) return;
       const count = document.querySelectorAll('.passenger-item').length;
-      document.getElementById('total-price').textContent = `¥${flight.price * count}`;
-      document.getElementById('price-detail').textContent = `${count} × ¥${flight.price}`;
+      document.getElementById('total-price').textContent = fmtPrice(flight.price * count);
+      document.getElementById('price-detail').textContent = `${count} × ${fmtPrice(flight.price)}`;
     }
 
     async function doBook() {
