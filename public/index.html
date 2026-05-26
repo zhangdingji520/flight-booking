@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>航空订票 - 首页</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">✈️ 航空订票</a>
+    <div class="nav-links" id="nav-links"></div>
+  </nav>
+
+  <section class="hero">
+    <h1>便捷出行，从这里开始</h1>
+    <p>搜索全国航班，快速预订，轻松管理您的行程</p>
+    <div class="search-box">
+      <div class="form-group">
+        <label>出发城市</label>
+        <input type="text" id="s-departure" placeholder="如：北京">
+      </div>
+      <div class="form-group">
+        <label>到达城市</label>
+        <input type="text" id="s-arrival" placeholder="如：上海">
+      </div>
+      <div class="form-group">
+        <label>出发日期</label>
+        <input type="date" id="s-date">
+      </div>
+      <button class="btn btn-primary" onclick="doSearch()" style="height:42px">搜索航班</button>
+    </div>
+  </section>
+
+  <div class="container" id="results" style="display:none">
+    <h2 style="margin-bottom:16px">搜索结果</h2>
+    <div id="flight-list"></div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    document.getElementById('s-date').value = new Date().toISOString().split('T')[0];
+
+    async function doSearch() {
+      const departure = document.getElementById('s-departure').value.trim();
+      const arrival = document.getElementById('s-arrival').value.trim();
+      const date = document.getElementById('s-date').value;
+      try {
+        const flights = await API.searchFlights({ departure, arrival, date });
+        const list = document.getElementById('flight-list');
+        document.getElementById('results').style.display = 'block';
+        if (!flights.length) {
+          list.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>未找到符合条件的航班</p></div>';
+          return;
+        }
+        list.innerHTML = flights.map(f => `
+          <div class="flight-card">
+            <div class="flight-info">
+              <div class="flight-route">
+                <span>${f.departure}</span>
+                <span class="arrow">→</span>
+                <span>${f.arrival}</span>
+              </div>
+              <div class="flight-meta">
+                <span>${f.airline} ${f.flightNo}</span>
+                <span>${f.departureTime.split(' ')[1]} - ${f.arrivalTime.split(' ')[1]}</span>
+                <span>${f.aircraft}</span>
+                <span>余票: ${f.availableSeats}</span>
+              </div>
+            </div>
+            <div class="flight-price">
+              <div class="price">¥${f.price}</div>
+              <div class="unit">每人</div>
+              <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="bookFlight('${f.id}')">立即预订</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    function bookFlight(id) {
+      const user = getUser();
+      if (!user) {
+        showToast('请先登录', 'error');
+        setTimeout(() => window.location.href = '/login.html', 1000);
+        return;
+      }
+      window.location.href = `/booking.html?flightId=${id}`;
+    }
+  </script>
+</body>
+</html>
