@@ -287,10 +287,16 @@
     }
 
     async function deleteFlight(id) {
-      if (!confirm('确定要删除该航班吗？')) return;
       try {
-        await API.deleteFlight(id);
-        showToast('删除成功');
+        const res = await API.request(`/admin/flights/${id}/orders-count`);
+        const msg = res.count > 0
+          ? `确定要删除该航班吗？\n\n该航班有 ${res.count} 个有效订单，删除后将自动取消并通知用户。`
+          : '确定要删除该航班吗？';
+        if (!confirm(msg)) return;
+      } catch { if (!confirm('确定要删除该航班吗？')) return; }
+      try {
+        const res = await API.deleteFlight(id);
+        showToast(res.message || '删除成功');
         loadFlights();
         loadStats();
       } catch (e) { showToast(e.message, 'error'); }
