@@ -1,8 +1,8 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
+const bcrypt = require('bcryptjs');
 const { PORT } = require('./config');
-const db = require('./db');
+const supabase = require('./db-supabase');
 
 const authRoutes = require('./routes/auth');
 const flightRoutes = require('./routes/flights');
@@ -31,38 +31,80 @@ app.use('/api', (req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+// Initialize admin user and seed flights
+async function initializeData() {
+  try {
+    const { data: adminUser, error: adminError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'admin')
+      .maybeSingle();
 
-// Initialize data files
-const dataFiles = {
-  'users.json': [],
-  'flights.json': require('./data/seed-flights'),
-  'orders.json': [],
-  'notifications.json': []
-};
+    if (adminError) {
+      console.error('Check admin error:', adminError);
+    }
 
-for (const [file, defaultData] of Object.entries(dataFiles)) {
-  const filePath = path.join(dataDir, file);
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
+    if (!adminUser) {
+      const { error: createAdminError } = await supabase
+        .from('users')
+        .insert([{
+          id: 'admin-001',
+          username: 'admin',
+          password: bcrypt.hashSync('admin123', 10),
+          real_name: 'System Admin',
+          email: 'admin@flightbooking.com',
+          phone: '13800000000',
+          role: 'admin'
+        }]);
+
+      if (createAdminError) {
+        console.error('Create admin error:', createAdminError);
+      } else {
+        console.log('Default admin user created');
+      }
+    }
+
+    const { count: flightCount, error: countError } = await supabase
+      .from('flights')
+      .select('id', { count: 'exact', head: true });
+
+    if (countError) {
+      console.error('Check flights error:', countError);
+    }
+
+    if (!flightCount || flightCount === 0) {
+      const seedFlights = require('./data/seed-flights');
+      const flights = seedFlights.map(f => ({
+        id: f.id,
+        flight_no: f.flightNo,
+        airline: f.airline,
+        departure: f.departure,
+        arrival: f.arrival,
+        departure_time: f.departureTime,
+        arrival_time: f.arrivalTime,
+        price: f.price,
+        total_seats: f.totalSeats,
+        available_seats: f.availableSeats,
+        aircraft: f.aircraft,
+        status: f.status
+      }));
+
+      const { error: insertError } = await supabase
+        .from('flights')
+        .insert(flights);
+
+      if (insertError) {
+        console.error('Seed flights error:', insertError);
+      } else {
+        console.log(`Seeded ${flights.length} flights`);
+      }
+    }
+  } catch (err) {
+    console.error('Initialize data error:', err);
   }
 }
 
-// Ensure default admin user
-const users = db.read('users.json');
-if (!users.find(u => u.role === 'admin')) {
-  const bcrypt = require('bcryptjs');
-  users.push({
-    id: 'admin-001', username: 'admin',
-    password: bcrypt.hashSync('admin123', 10),
-    realName: 'System Admin', email: 'admin@flightbooking.com',
-    phone: '13800000000', role: 'admin',
-    createdAt: new Date().toISOString()
-  });
-  db.write('users.json', users);
-}
+initializeData();
 
 // API routes
 app.use('/api/auth', authRoutes);
